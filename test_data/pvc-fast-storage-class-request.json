@@ -1,0 +1,99 @@
+{
+  "dryRun": false,
+  "kind": {
+    "group": "",
+    "kind": "PersistentVolumeClaim",
+    "version": "v1"
+  },
+  "name": "example-pv-claim",
+  "namespace": "default",
+  "object": {
+    "apiVersion": "v1",
+    "kind": "PersistentVolumeClaim",
+    "metadata": {
+      "annotations": {
+        "io.kubewarden.policy.echo.create": "42f8698a-c1ab-4e17-9d7b-4d76f8b84658",
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolumeClaim\",\"metadata\":{\"annotations\":{\"io.kubewarden.policy.echo.create\":\"42f8698a-c1ab-4e17-9d7b-4d76f8b84658\"},\"name\":\"example-pv-claim\",\"namespace\":\"default\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"resources\":{\"requests\":{\"storage\":\"4Gi\"}},\"storageClassName\":\"fast\"}}\n"
+      },
+      "creationTimestamp": "2024-03-21T12:55:33Z",
+      "finalizers": [
+        "kubernetes.io/pvc-protection"
+      ],
+      "managedFields": [
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:io.kubewarden.policy.echo.create": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:accessModes": {},
+              "f:resources": {
+                "f:requests": {
+                  ".": {},
+                  "f:storage": {}
+                }
+              },
+              "f:storageClassName": {},
+              "f:volumeMode": {}
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2024-03-21T12:55:33Z"
+        }
+      ],
+      "name": "example-pv-claim",
+      "namespace": "default",
+      "uid": "b8ad556a-c156-4ee0-80a2-b1150fce7c36"
+    },
+    "spec": {
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "resources": {
+        "requests": {
+          "storage": "4Gi"
+        }
+      },
+      "storageClassName": "fast",
+      "volumeMode": "Filesystem"
+    },
+    "status": {}
+  },
+  "operation": "CREATE",
+  "options": {
+    "apiVersion": "meta.k8s.io/v1",
+    "fieldManager": "kubectl-client-side-apply",
+    "fieldValidation": "Strict",
+    "kind": "CreateOptions"
+  },
+  "requestKind": {
+    "group": "",
+    "kind": "PersistentVolumeClaim",
+    "version": "v1"
+  },
+  "requestResource": {
+    "group": "",
+    "resource": "persistentvolumeclaims",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "",
+    "resource": "persistentvolumeclaims",
+    "version": "v1"
+  },
+  "uid": "4bc4ec12-b2c9-42db-a1b2-321f8c2fc8e1",
+  "userInfo": {
+    "groups": [
+      "system:masters",
+      "system:authenticated"
+    ],
+    "username": "system:admin"
+  }
+}

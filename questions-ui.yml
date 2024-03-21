@@ -1,0 +1,26 @@
+questions:
+- default: null
+  description: >-
+     Policy that validates and adjusts the usage of StorageClasses in PersistentVolumeClaims
+  group: Settings
+  label: Description
+  required: false
+  hide_input: true
+  type: string
+  variable: description
+- default: []
+  description: List of StorageClasses that cannot be used
+  group: Settings
+  label: Denied StorageClass names
+  required: true
+  type: array[
+  value_multiline: false
+  variable: deniedStorageClasses
+- default: null
+  description: StorageClass to be used when a denied one is requested
+  group: Settings
+  label: Fallback StorageClass
+  required: false
+  hide_input: true
+  type: string
+  variable: fallbackStorageClass
