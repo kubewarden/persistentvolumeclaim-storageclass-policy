@@ -21,6 +21,5 @@ questions:
   group: Settings
   label: Fallback StorageClass
   required: false
-  hide_input: true
   type: string
   variable: fallbackStorageClass
