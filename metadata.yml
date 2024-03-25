@@ -13,7 +13,7 @@ executionMode: kubewarden-wapc
 backgroundAudit: true
 annotations:
   # artifacthub specific:
-  io.artifacthub.displayName:  PersistentVolumeClaim StorageClass Validator
+  io.artifacthub.displayName:  PVC StorageClass Validator
   io.artifacthub.resources: PersistentVolumeClaim
   io.artifacthub.keywords: persistentvolumeclaim, pvc, kubewarden
   io.kubewarden.policy.ociUrl: ghcr.io/kubewarden/policies/persistent-volume-clain-validator-policy

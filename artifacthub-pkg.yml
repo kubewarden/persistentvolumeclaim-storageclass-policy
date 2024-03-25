@@ -6,8 +6,8 @@
 #   kwctl scaffold artifacthub > artifacthub-pkg.yml 
 version: 0.1.0
 name: persistentvolumeclaim-storageclass-policy
-displayName: PersistentVolumeClaim StorageClass Validator
 createdAt: 2024-03-21T16:50:25.961234397Z
+displayName: PVC StorageClass Validator
 description: Policy that validates and adjusts the usage of StorageClasses in PersistentVolumeClaims
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/persistent-volume-clain-validator-policy
