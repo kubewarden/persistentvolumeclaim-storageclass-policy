@@ -6,31 +6,31 @@
 #   kwctl scaffold artifacthub > artifacthub-pkg.yml 
 version: 0.1.0
 name: persistentvolumeclaim-storageclass-policy
-createdAt: 2024-03-21T16:50:25.961234397Z
 displayName: PVC StorageClass Validator
+createdAt: 2024-03-25T09:25:35.076081402Z
 description: Policy that validates and adjusts the usage of StorageClasses in PersistentVolumeClaims
 license: Apache-2.0
-homeURL: https://github.com/kubewarden/persistent-volume-clain-validator-policy
+homeURL: https://github.com/kubewarden/persistentvolumeclaim-storageclass-policy
 containersImages:
 - name: policy
-  image: ghcr.io/kubewarden/policies/persistent-volume-clain-validator-policy:v0.1.0
+  image: ghcr.io/kubewarden/policies/persistentvolumeclaim-storageclass-policy:v0.1.0
 keywords:
 - persistentvolumeclaim
 - pvc
 - kubewarden
 links:
 - name: policy
-  url: https://github.com/kubewarden/persistent-volume-clain-validator-policy/releases/download/v0.1.0/policy.wasm
+  url: https://github.com/kubewarden/persistentvolumeclaim-storageclass-policy/releases/download/v0.1.0/policy.wasm
 - name: source
-  url: https://github.com/kubewarden/persistent-volume-clain-validator-policy
+  url: https://github.com/kubewarden/persistentvolumeclaim-storageclass-policy
 install: |
   The policy can be obtained using [`kwctl`](https://github.com/kubewarden/kwctl):
   ```console
-  kwctl pull ghcr.io/kubewarden/policies/persistent-volume-clain-validator-policy:v0.1.0
+  kwctl pull ghcr.io/kubewarden/policies/persistentvolumeclaim-storageclass-policy:v0.1.0
   ```
   Then, generate the policy manifest and tune it to your liking. For example:
   ```console
-  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/persistent-volume-clain-validator-policy:v0.1.0
+  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/persistentvolumeclaim-storageclass-policy:v0.1.0
   ```
 maintainers:
 - name: Kubewarden developers
