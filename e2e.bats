@@ -21,7 +21,7 @@
 }
 
 @test "Fallback cannot be in the denied storage classes list" {
-	run kwctl run  --request-path test_data/pvc-fast-storage-class-request.json --settings-json '{"deniedStorageClasses":["fast"], fallbackStorageClass: "fast"}'  annotated-policy.wasm
+	run kwctl run  --request-path test_data/pvc-fast-storage-class-request.json --settings-json '{"deniedStorageClasses":["fast"], "fallbackStorageClass": "fast"}'  annotated-policy.wasm
 
 	  # this prints the output when one the checks below fails
 	  echo "output = ${output}"
