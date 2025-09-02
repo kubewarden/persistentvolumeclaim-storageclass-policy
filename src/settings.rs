@@ -63,106 +63,87 @@ mod tests {
     use super::*;
 
     use kubewarden_policy_sdk::settings::Validatable;
+    use rstest::rstest;
 
-    #[test]
-    fn validate_settings_with_fallback_inside_denied_storage_class_list() {
+    #[rstest]
+    #[case::fallback_cannot_be_in_denied_list(
+        None,
+        Some(HashSet::from(["foo", "bar"])), 
+        Some("bar"), 
+        Some("fallbackStorageClass cannot be in deniedStorageClasses"))]
+    #[case::fallback_not_in_denied_list_is_allowed(
+        None,
+        Some(HashSet::from(["foo", "bar"])), 
+        Some("baz"), 
+        None)]
+    #[case::denined_list_cannot_be_empty(
+        None,
+        Some(HashSet::new()),
+        None,
+        Some("deniedStorageClasses cannot be empty")
+    )]
+    #[case::denined_list_must_has_some_item(
+        None,
+        Some(HashSet::from(["foo", "bar"])), 
+        None,
+        None)]
+    #[case::alloed_list_cannot_be_empty(
+        Some(HashSet::new()),
+        None,
+        None,
+        Some("allowedStorageClasses cannot be empty")
+    )]
+    #[case::allowed_list_must_has_some_item(
+        Some(HashSet::from(["foo", "bar"])),
+        None,
+        None,
+        None,
+    )]
+    #[case::fallback_class_must_be_in_allowed_list(
+        Some(HashSet::from(["foo", "bar"])),
+        None,
+        Some("baz"), 
+        Some("fallbackStorageClass must be in allowedStorageClasses"))]
+    #[case::fallback_class_in_allowed_list_must_be_ok(
+        Some(HashSet::from(["foo", "bar"])),
+        None,
+        Some("foo"), 
+        None)]
+    #[case::empty_settings_are_not_allowed(
+        None,
+        None,
+        None,
+        Some("One of deniedStorageClasses or allowedStorageClasses must be set")
+    )]
+    #[case::empty_settings_are_not_allowed(
+        Some(HashSet::from(["foo", "bar"])),
+        Some(HashSet::from(["foo", "bar"])),
+        None,
+        Some("Only one of deniedStorageClasses or allowedStorageClasses can be set")
+    )]
+    fn settings_validation(
+        #[case] allowed_storage_classes: Option<HashSet<&str>>,
+        #[case] denied_storage_classes: Option<HashSet<&str>>,
+        #[case] fallback_storage_class: Option<&str>,
+        #[case] expected_error: Option<&str>,
+    ) {
         let settings = Settings {
-            denied_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            fallback_storage_class: Some("bar".to_string()),
-            ..Default::default()
+            denied_storage_classes: denied_storage_classes
+                .to_owned()
+                .map(|set| set.into_iter().map(String::from).collect()),
+            allowed_storage_classes: allowed_storage_classes
+                .to_owned()
+                .map(|set| set.into_iter().map(String::from).collect()),
+            fallback_storage_class: fallback_storage_class.map(String::from),
         };
-        assert!(settings.validate().is_err());
-        assert_eq!(
-            settings.validate().unwrap_err(),
-            "fallbackStorageClass cannot be in deniedStorageClasses".to_string()
-        );
-    }
-
-    #[test]
-    fn validate_empty_settings() {
-        let settings = Settings::default();
-        assert!(settings.validate().is_err());
-        assert_eq!(
-            settings.validate().unwrap_err(),
-            "One of deniedStorageClasses or allowedStorageClasses must be set".to_string()
-        );
-    }
-
-    #[test]
-    fn validate_settings_with_empty_storage_classes_list() {
-        let settings = Settings {
-            denied_storage_classes: Some(HashSet::new()),
-            fallback_storage_class: None,
-            ..Default::default()
-        };
-        assert!(settings.validate().is_err());
-        assert_eq!(
-            settings.validate().unwrap_err(),
-            "deniedStorageClasses cannot be empty".to_string()
-        );
-    }
-
-    #[test]
-    fn validate_settings() {
-        let settings = Settings {
-            denied_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            fallback_storage_class: None,
-            ..Default::default()
-        };
-        assert!(settings.validate().is_ok());
-    }
-
-    #[test]
-    fn validate_settings_with_fallback() {
-        let settings = Settings {
-            denied_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            fallback_storage_class: Some("baz".to_string()),
-            ..Default::default()
-        };
-        assert!(settings.validate().is_ok());
-    }
-
-    #[test]
-    fn validate_settings_with_empty_allowed_storage_classes_list() {
-        let settings = Settings {
-            allowed_storage_classes: Some(HashSet::new()),
-            ..Default::default()
-        };
-        assert_eq!(
-            settings.validate().expect_err("Expected error"),
-            "allowedStorageClasses cannot be empty".to_string()
-        );
-    }
-
-    #[test]
-    fn validate_non_empty_allowed_storage_classes_list_settings() {
-        let settings = Settings {
-            allowed_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            ..Default::default()
-        };
-        assert!(settings.validate().is_ok());
-    }
-
-    #[test]
-    fn validate_fallback_should_be_defined_in_allowed_list() {
-        let settings = Settings {
-            allowed_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            fallback_storage_class: Some("baz".to_string()),
-            ..Default::default()
-        };
-        assert_eq!(
-            settings.validate().expect_err("Expected error"),
-            "fallbackStorageClass must be in allowedStorageClasses".to_string()
-        );
-    }
-
-    #[test]
-    fn validate_fallback_should_be_defined_in_allowed_list2() {
-        let settings = Settings {
-            allowed_storage_classes: Some(HashSet::from(["foo".to_string(), "bar".to_string()])),
-            fallback_storage_class: Some("foo".to_string()),
-            ..Default::default()
-        };
-        assert!(settings.validate().is_ok());
+        let validation_result = settings.validate();
+        if let Some(expected_error) = expected_error {
+            assert_eq!(
+                validation_result.expect_err("Missing validation error"),
+                expected_error
+            );
+        } else {
+            assert!(validation_result.is_ok());
+        }
     }
 }
