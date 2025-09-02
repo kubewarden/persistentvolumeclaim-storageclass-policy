@@ -58,31 +58,6 @@ fn validate(payload: &[u8]) -> CallResult {
     unreachable!()
 }
 
-// This function is the common logic to either allow or deny list a storage class.
-// If a fallback storage class is set, the request will be mutated to use it.
-// If not, the request will be rejected.
-fn mutate_or_reject(
-    pvc: PersistentVolumeClaim,
-    storage_class_name: String,
-    fallback_storage_class: Option<&String>,
-) -> CallResult {
-    if let Some(fallback_storage_class) = fallback_storage_class {
-        let mutated_pvc = mutate_request(pvc, fallback_storage_class);
-        let json_value = serde_json::to_value(&mutated_pvc)?;
-        return kubewarden::mutate_request(json_value);
-    }
-
-    kubewarden::reject_request(
-        Some(format!(
-            "storage class \"{}\" is not allowed",
-            storage_class_name,
-        )),
-        None,
-        None,
-        None,
-    )
-}
-
 fn validate_allowed_classes(
     pvc: PersistentVolumeClaim,
     storage_class_name: String,
@@ -107,10 +82,8 @@ fn validate_denied_classes(
     kubewarden::accept_request()
 }
 
-fn mutate_request(
-    pvc: PersistentVolumeClaim,
-    fallback_storage_class: &str,
-) -> PersistentVolumeClaim {
+// Function to mutate the PVC request to use the fallback storage class
+fn mutate_pvc(pvc: PersistentVolumeClaim, fallback_storage_class: &str) -> PersistentVolumeClaim {
     PersistentVolumeClaim {
         spec: Some(PersistentVolumeClaimSpec {
             storage_class_name: Some(fallback_storage_class.to_string()),
@@ -118,6 +91,31 @@ fn mutate_request(
         }),
         ..pvc
     }
+}
+
+// This function is the common logic to either allow or deny list a storage class.
+// If a fallback storage class is set, the request will be mutated to use it.
+// If not, the request will be rejected.
+fn mutate_or_reject(
+    pvc: PersistentVolumeClaim,
+    storage_class_name: String,
+    fallback_storage_class: Option<&String>,
+) -> CallResult {
+    if let Some(fallback_storage_class) = fallback_storage_class {
+        let mutated_pvc = mutate_pvc(pvc, fallback_storage_class);
+        let json_value = serde_json::to_value(&mutated_pvc)?;
+        return kubewarden::mutate_request(json_value);
+    }
+
+    kubewarden::reject_request(
+        Some(format!(
+            "storage class \"{}\" is not allowed",
+            storage_class_name,
+        )),
+        None,
+        None,
+        None,
+    )
 }
 
 #[cfg(test)]
