@@ -11,32 +11,69 @@ denied storage class is requested.
 
 ## Configuration
 
-The policy is configurable to meet the needs of different Kubernetes
-environments. Below is the structure of the policy's configuration parameters:
+You can configure the policy's behavior using the parameters below:
 
 ```yaml
-# List of storage classes that are not allowed
+# A list of storage classes that are forbidden.
+# This setting is mutually exclusive with allowedStorageClasses.
 deniedStorageClasses:
-- fast
-- nvme
+  - fast
+  - nvme
 
-# Optional: Specifies the fallback storage class to use when a denied storage class is requested
-fallbackStorageClass: slow
+# A list of storage classes that are permitted.
+# This setting is mutually exclusive with deniedStorageClasses.
+allowedStorageClasses:
+  - standard
+  - slow
+
+# Optional: Specifies a fallback storage class to use when the
+# requested storage class is not allowed.
+fallbackStorageClass: standard
 ```
 
-The fallback storage class is optional. If not specified, the policy will
-reject. Furthermore, the `fallbackStorageClass` values cannot be defined in the
-`deniedStorageClasses` list.
+You can configure the policy using either a denylist (`deniedStorageClasses`)
+or an allowlist (`allowedStorageClasses`), but not both, as these settings are
+mutually exclusive.
+
+- `deniedStorageClasses`: Any `PersistentVolumeClaim` requesting a storage
+  class on this list will be considered invalid.
+- `allowedStorageClasses`: Any `PersistentVolumeClaim` requesting a storage
+  class not on this list will be considered invalid.
+
+The `fallbackStorageClass` is an optional parameter that specifies a storage
+class to apply if the one requested is invalid. The value of the fallback must
+be a valid storage class itself:
+
+- If `deniedStorageClasses` is configured, the `fallbackStorageClass` must not be
+  one of the denied classes.
+- If `allowedStorageClasses` is configured, the `fallbackStorageClass` must be one
+  of the allowed classes.
+
+If a request uses an invalid storage class and `fallbackStorageClass` is not
+defined, the policy will reject the resource.
 
 ## How It Works
 
-The policy operates by evaluating the `storageClassName` specified in
-`PersistentVolumeClaim` objects. If a PVC requests a storage class listed in
-`deniedStorageClasses`, the policy action will depend on the configuration:
+The policy inspects the `spec.storageClassName` field of PVC under evaluation.
+The policy's action depends on whether you are using an allowlist or a
+denylist.
 
-- Without a `fallbackStorageClass` specified, the PVC will be rejected.
-- With a `fallbackStorageClass` specified, the PVC will be mutated to use the
-  fallback storage class, allowing the request to proceed.
+**Using `deniedStorageClasses`**
+
+If a PVC requests a storage class that is on the `deniedStorageClasses` list:
+
+- Without a `fallbackStorageClass`, the request is rejected.
+- With a `fallbackStorageClass`, the PVC is mutated to use the fallback storage
+  class, and the request is accepted.
+
+**Using `allowedStorageClasses`**
+
+If a PVC requests a storage class that is not on the `allowedStorageClasses`
+list:
+
+- Without a `fallbackStorageClass`, the request is rejected.
+- With a `fallbackStorageClass`, the PVC is mutated to use the fallback storage
+  class, and the request is accepted.
 
 ## Examples
 
@@ -46,7 +83,7 @@ Given the configuration:
 
 ```yaml
 deniedStorageClasses:
-- fast
+  - fast
 ```
 
 A PVC with `storageClassName: fast` will be rejected:
@@ -71,7 +108,7 @@ With the following configuration:
 
 ```yaml
 deniedStorageClasses:
-- fast
+  - fast
 fallbackStorageClass: cheap
 ```
 
@@ -100,6 +137,73 @@ metadata:
   name: task-pv-claim
 spec:
   storageClassName: cheap
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+```
+
+### Example 3: Rejecting a Disallowed Storage Class
+
+Given the following configuration that only allows the `standard` storage class
+
+```yaml
+allowedStorageClasses:
+  - standard
+```
+
+A PVC requesting the disallowed `fast` storage class will be rejected:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: task-pv-claim
+spec:
+  storageClassName: fast
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+```
+
+### Example 4: Mutating a Disallowed Storage Class to the Fallback
+
+With the following configuration:
+
+```yaml
+allowedStorageClasses:
+  - standard
+fallbackStorageClass: standard
+```
+
+A PVC requesting a disallowed storage class (`fast`) will be mutated to use the `fallbackStorageClass` (`standard`) and will be accepted:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: task-pv-claim
+spec:
+  storageClassName: fast
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+```
+
+Will be mutated to:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: task-pv-claim
+spec:
+  storageClassName: standard
   accessModes:
     - ReadWriteOnce
   resources:
