@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use guest::prelude::*;
 use kubewarden_policy_sdk::wapc_guest as guest;
 
-use k8s_openapi::api::core::v1::{self as apicore, PersistentVolumeClaim};
+use k8s_openapi::api::core::v1::{PersistentVolumeClaim, PersistentVolumeClaimSpec};
 
 extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{protocol_version_guest, request::ValidationRequest, validate_settings};
@@ -19,16 +19,16 @@ pub extern "C" fn wapc_init() {
 
 fn validate(payload: &[u8]) -> CallResult {
     let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
+    let settings = &validation_request.settings;
 
-    let pvc = match serde_json::from_value::<apicore::PersistentVolumeClaim>(
-        validation_request.request.object,
-    ) {
-        Ok(pvc) => pvc,
-        Err(_) => {
-            // Not PVC, so we don't need to validate it
-            return kubewarden::accept_request();
-        }
-    };
+    let pvc =
+        match serde_json::from_value::<PersistentVolumeClaim>(validation_request.request.object) {
+            Ok(pvc) => pvc,
+            Err(_) => {
+                // Not PVC, so we don't need to validate it
+                return kubewarden::accept_request();
+            }
+        };
 
     let storage_class_name = pvc
         .spec
@@ -36,24 +36,26 @@ fn validate(payload: &[u8]) -> CallResult {
         .and_then(|spec| spec.storage_class_name.clone())
         .unwrap_or_default();
 
-    if validation_request
-        .settings
-        .allowed_storage_classes
-        .is_some()
-    {
+    if let Some(allowed_storage_classes) = &settings.allowed_storage_classes {
         return validate_allowed_classes(
             pvc,
             storage_class_name,
-            validation_request.settings.allowed_storage_classes.unwrap(),
-            validation_request.settings.fallback_storage_class,
+            allowed_storage_classes,
+            settings.fallback_storage_class.as_ref(),
         );
     }
-    validate_denied_classes(
-        pvc,
-        storage_class_name,
-        validation_request.settings.denied_storage_classes.unwrap(),
-        validation_request.settings.fallback_storage_class,
-    )
+
+    if let Some(denied_storage_classes) = &settings.denied_storage_classes {
+        return validate_denied_classes(
+            pvc,
+            storage_class_name,
+            denied_storage_classes,
+            settings.fallback_storage_class.as_ref(),
+        );
+    }
+
+    // this should never happen because settings validation should have failed
+    unreachable!()
 }
 
 // This function is the common logic to either allow or deny list a storage class.
@@ -62,13 +64,14 @@ fn validate(payload: &[u8]) -> CallResult {
 fn mutate_or_reject(
     pvc: PersistentVolumeClaim,
     storage_class_name: String,
-    fallback_storage_class: Option<String>,
+    fallback_storage_class: Option<&String>,
 ) -> CallResult {
-    if fallback_storage_class.is_some() {
+    if let Some(fallback_storage_class) = fallback_storage_class {
         let mutated_pvc = mutate_request(pvc, fallback_storage_class);
         let json_value = serde_json::to_value(&mutated_pvc)?;
         return kubewarden::mutate_request(json_value);
     }
+
     kubewarden::reject_request(
         Some(format!(
             "storage class \"{}\" is not allowed",
@@ -83,8 +86,8 @@ fn mutate_or_reject(
 fn validate_allowed_classes(
     pvc: PersistentVolumeClaim,
     storage_class_name: String,
-    allowed_storage_classes: HashSet<String>,
-    fallback_storage_class: Option<String>,
+    allowed_storage_classes: &HashSet<String>,
+    fallback_storage_class: Option<&String>,
 ) -> CallResult {
     if allowed_storage_classes.contains(&storage_class_name) {
         return kubewarden::accept_request();
@@ -95,8 +98,8 @@ fn validate_allowed_classes(
 fn validate_denied_classes(
     pvc: PersistentVolumeClaim,
     storage_class_name: String,
-    denied_storage_classes: HashSet<String>,
-    fallback_storage_class: Option<String>,
+    denied_storage_classes: &HashSet<String>,
+    fallback_storage_class: Option<&String>,
 ) -> CallResult {
     if denied_storage_classes.contains(&storage_class_name) {
         return mutate_or_reject(pvc, storage_class_name, fallback_storage_class);
@@ -105,12 +108,12 @@ fn validate_denied_classes(
 }
 
 fn mutate_request(
-    pvc: apicore::PersistentVolumeClaim,
-    fallback_storage_class: Option<String>,
-) -> apicore::PersistentVolumeClaim {
-    apicore::PersistentVolumeClaim {
-        spec: Some(apicore::PersistentVolumeClaimSpec {
-            storage_class_name: fallback_storage_class.clone(),
+    pvc: PersistentVolumeClaim,
+    fallback_storage_class: &str,
+) -> PersistentVolumeClaim {
+    PersistentVolumeClaim {
+        spec: Some(PersistentVolumeClaimSpec {
+            storage_class_name: Some(fallback_storage_class.to_string()),
             ..pvc.spec.unwrap_or_default()
         }),
         ..pvc
@@ -120,89 +123,122 @@ fn mutate_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::apimachinery::pkg::apis::meta::v1 as metav1;
+
+    use kubewarden::response::ValidationResponse;
     use rstest::rstest;
 
-    #[rstest]
-    #[case::pvc_class_in_denined_list_should_reject(vec![], vec!["slow", "standard"], None, "slow", false)]
-    #[case::pvc_class_not_in_denied_list_should_accept(vec![], vec!["slow", "standard"], None, "fast", true)]
-    #[case::pvc_class_should_fallback_when_using_class_from_denined_list(vec![], vec!["slow", "standard"], Some("fast"), "slow", true)]
-    #[case::pvc_class_not_in_allowed_list_should_reject(vec!["slow", "standard"], vec![], None, "fast", false)]
-    #[case::pvc_class_in_allowed_list_should_accept(vec!["slow", "standard"], vec![], None, "slow", true)]
-    #[case::pvc_class_not_in_allowed_list_should_fallback(vec!["slow", "standard"], vec![], Some("slow"), "fast", true)]
-    fn validation_tests(
-        #[case] allowed_storage_classes_list: Vec<&str>,
-        #[case] denied_storage_classes_list: Vec<&str>,
-        #[case] fallback_storage_class: Option<&str>,
-        #[case] storage_class_name: &str,
-        #[case] should_accept: bool,
-    ) {
-        use kubewarden::response::ValidationResponse;
-
-        let denied_storage_classes: HashSet<String> = denied_storage_classes_list
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
-        let allowed_storage_classes: HashSet<String> = allowed_storage_classes_list
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
-        let pvc = apicore::PersistentVolumeClaim {
-            metadata: metav1::ObjectMeta {
-                name: Some("pvc".to_string()),
-                ..Default::default()
-            },
-            spec: Some(apicore::PersistentVolumeClaimSpec {
+    fn make_pvc(storage_class_name: &str) -> PersistentVolumeClaim {
+        PersistentVolumeClaim {
+            spec: Some(PersistentVolumeClaimSpec {
                 storage_class_name: Some(storage_class_name.to_owned()),
                 ..Default::default()
             }),
             ..Default::default()
-        };
-
-        let result = if !allowed_storage_classes.is_empty() {
-            validate_allowed_classes(
-                pvc,
-                storage_class_name.to_owned(),
-                allowed_storage_classes,
-                fallback_storage_class.map(|s| s.to_owned()),
-            )
-        } else {
-            validate_denied_classes(
-                pvc,
-                storage_class_name.to_owned(),
-                denied_storage_classes,
-                fallback_storage_class.map(|s| s.to_owned()),
-            )
         }
+    }
+
+    #[rstest]
+    #[case::reject_pvc_using_not_allowed_class(vec!["slow", "standard"], "fast", false, None)]
+    #[case::accept_pvc_doing_a_mutation(vec!["slow", "standard"], "fast", true, Some("standard"))]
+    #[case::accept_pvc_using_allowed_class(vec!["slow", "standard"], "slow", true, None)]
+    fn validate_allowed_classes_test(
+        #[case] allowed_storage_classes: Vec<&str>,
+        #[case] storage_class_name: &str,
+        #[case] should_accept: bool,
+        #[case] fallback_storage_class: Option<&str>,
+    ) {
+        let allowed_storage_classes: HashSet<String> = allowed_storage_classes
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        let pvc = make_pvc(storage_class_name);
+
+        let result = validate_allowed_classes(
+            pvc,
+            storage_class_name.to_owned(),
+            &allowed_storage_classes,
+            fallback_storage_class.map(|s| s.to_owned()).as_ref(),
+        )
         .expect("CallResult should be Ok");
 
         let response: ValidationResponse =
             serde_json::from_slice(result.as_slice()).expect("Response should be valid JSON");
         assert!(should_accept == response.accepted);
+
         if should_accept {
-            assert_eq!(
-                fallback_storage_class.is_none(),
-                response.mutated_object.is_none(),
-            );
-            if fallback_storage_class.is_some() {
-                let mutated_pvc = serde_json::from_value::<apicore::PersistentVolumeClaim>(
-                    response.mutated_object.expect("Missing mutated object"),
-                )
-                .expect("Mutated object should be a valid PVC");
-                assert_eq!(
-                    mutated_pvc
-                        .spec
-                        .expect("Missing spec")
-                        .storage_class_name
-                        .expect("Missing storage class name"),
-                    fallback_storage_class.expect("Missing fallback storage class")
-                );
-            }
-        } else {
-            assert_eq!(
-                response.message.expect("Missing error message"),
-                format!("storage class \"{}\" is not allowed", storage_class_name)
-            );
+            let result = check_mutatation(response.mutated_object, fallback_storage_class);
+            assert!(result.is_ok(), "{}", result.err().unwrap());
         }
+    }
+
+    #[rstest]
+    #[case::reject_pvc_using_denied_class(vec!["slow", "standard"], "slow", false, None)]
+    #[case::accept_pvc_doing_a_mutation(vec!["slow", "fast"], "slow", true, Some("standard"))]
+    #[case::accept_pvc_using_not_denied_class(vec!["slow", "standard"], "fast", true, None)]
+    fn validate_denied_classes_test(
+        #[case] denied_storage_classes: Vec<&str>,
+        #[case] storage_class_name: &str,
+        #[case] should_accept: bool,
+        #[case] fallback_storage_class: Option<&str>,
+    ) {
+        let denied_storage_classes: HashSet<String> = denied_storage_classes
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        let pvc = make_pvc(storage_class_name);
+
+        let result = validate_denied_classes(
+            pvc,
+            storage_class_name.to_owned(),
+            &denied_storage_classes,
+            fallback_storage_class.map(|s| s.to_owned()).as_ref(),
+        )
+        .expect("CallResult should be Ok");
+
+        let response: ValidationResponse =
+            serde_json::from_slice(result.as_slice()).expect("Response should be valid JSON");
+        assert!(should_accept == response.accepted);
+
+        if should_accept {
+            let result = check_mutatation(response.mutated_object, fallback_storage_class);
+            assert!(result.is_ok(), "{}", result.err().unwrap());
+        }
+    }
+
+    fn check_mutatation(
+        mutated_object: Option<serde_json::Value>,
+        expected_storage_class: Option<&str>,
+    ) -> Result<(), String> {
+        if expected_storage_class.is_none() && mutated_object.is_none() {
+            // no mutation expected and none found
+            return Ok(());
+        }
+
+        if expected_storage_class.is_some() && mutated_object.is_none() {
+            return Err("Expected a mutated object, but none was found".to_string());
+        }
+
+        if expected_storage_class.is_none() && mutated_object.is_some() {
+            return Err("Did not expect a mutated object, but one was found".to_string());
+        }
+
+        let mutated_pvc = serde_json::from_value::<PersistentVolumeClaim>(mutated_object.unwrap())
+            .expect("Mutated object should be a valid PVC");
+        let mutated_pvc_storage_class = mutated_pvc
+            .spec
+            .expect("Missing spec")
+            .storage_class_name
+            .expect("Missing storage class name");
+
+        let expected_storage_class = expected_storage_class.unwrap();
+
+        if mutated_pvc_storage_class != expected_storage_class {
+            return Err(format!(
+                "Expected storage class \"{}\", but found \"{}\"",
+                expected_storage_class, mutated_pvc_storage_class
+            ));
+        }
+
+        Ok(())
     }
 }
